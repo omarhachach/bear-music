@@ -15,3 +15,6 @@
 # vendor/
 
 .idea/
+
+config.json
+cmd/music/music*

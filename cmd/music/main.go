@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,14 +13,23 @@ import (
 func main() {
 	c := make(chan os.Signal, 1)
 
+	byt, err := os.ReadFile("config.json")
+	if err != nil {
+		panic(err)
+		return
+	}
+
+	config := &bear.Config{}
+
+	err = json.Unmarshal(byt, &config)
+	if err != nil {
+		panic(err)
+		return
+	}
+
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	b := bear.New(&bear.Config{
-		Log: &bear.LogConfig{
-			Debug: true,
-			File:  "",
-		},
-		DiscordToken: "Njc0MzYyODMwMzQ2MjU2Mzk1.XjnfUw.TE-NgSM4AU4VmTUUd0buN7AwTyE",
-	}).RegisterModules(&music.Music{
+
+	b := bear.New(config).RegisterModules(&music.Music{
 		MusicConnections: map[string]*music.Connection{},
 	}).Start()
 
