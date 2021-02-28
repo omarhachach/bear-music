@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/jonas747/dca"
@@ -61,10 +62,22 @@ func (c *Connection) StreamMusic() error {
 		}
 
 		encodeSession.Cleanup()
+
 		c.Lock()
 		c.CurrentEncSession = nil
-		length = len(c.Queue)
 		c.Unlock()
+
+		if len(c.Queue)-1 == i {
+			for j := 0; j < 300; j++ {
+				length = len(c.Queue)
+				if length-1 == i {
+					time.Sleep(1 * time.Second)
+					continue
+				}
+
+				break
+			}
+		}
 	}
 
 	return nil
