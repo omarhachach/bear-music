@@ -2,10 +2,12 @@ package music
 
 import (
 	"github.com/omarhachach/bear"
+	"google.golang.org/api/youtube/v3"
 )
 
 type Music struct {
 	MusicConnections map[string]*Connection
+	Service          *youtube.Service
 }
 
 func (*Music) GetName() string {

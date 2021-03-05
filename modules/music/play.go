@@ -23,10 +23,12 @@ func (p *PlayCommand) GetCallers() []string {
 func (p *PlayCommand) GetHandler() func(*bear.Context) {
 	return func(c *bear.Context) {
 		cmdSplit := strings.Split(c.Message.Content, " ")
-		if len(cmdSplit) != 2 {
-			c.SendErrorMessage("Error sending message")
+		if len(cmdSplit) < 2 {
+			_, _ = c.SendErrorMessage("No search query provided.")
 			return
 		}
+
+		search := strings.Join(cmdSplit[1:], " ")
 
 		channel, err := c.Session.Channel(c.ChannelID)
 		if err != nil {
@@ -69,18 +71,19 @@ func (p *PlayCommand) GetHandler() func(*bear.Context) {
 					Channels:       2,
 					FrameRate:      48000,
 					FrameDuration:  20,
-					Bitrate:        64,
+					Bitrate:        128,
 					PacketLoss:     1,
 					RawOutput:      true,
 					Application:    dca.AudioApplicationAudio,
 					CoverFormat:    "jpeg",
 					BufferedFrames: 100,
 					VBR:            true,
+					AudioFilter:    "loudnorm",
 				})
 
 				p.Music.MusicConnections[channel.GuildID] = conn
 
-				vid, err := conn.AddYouTubeVideo(cmdSplit[1])
+				vid, err := conn.AddYouTubeVideo(search, p.Music.Service)
 				if err != nil {
 					c.Log.WithError(err).Debug("Error adding YouTube video to queue.")
 					c.SendErrorMessage("YouTube link invalid.")
@@ -113,7 +116,7 @@ func (p *PlayCommand) GetHandler() func(*bear.Context) {
 			return
 		}
 
-		vid, err := conn.AddYouTubeVideo(cmdSplit[1])
+		vid, err := conn.AddYouTubeVideo(search, p.Music.Service)
 		if err != nil {
 			c.Log.WithError(err).Debug("Error adding YouTube video to queue.")
 			c.SendErrorMessage("YouTube link invalid.")

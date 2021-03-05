@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/signal"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/omarhachach/bear"
 	"github.com/omarhachach/bear-music/modules/music"
+	"google.golang.org/api/option"
+	"google.golang.org/api/youtube/v3"
 )
 
 func main() {
@@ -19,7 +22,7 @@ func main() {
 		return
 	}
 
-	config := &bear.Config{}
+	config := &Config{}
 
 	err = json.Unmarshal(byt, &config)
 	if err != nil {
@@ -27,10 +30,19 @@ func main() {
 		return
 	}
 
+	b := bear.New(config.Config)
+
+	service, err := youtube.NewService(context.Background(), option.WithAPIKey(config.APIKey))
+	if err != nil {
+		b.Log.WithError(err).Error("Error creating YouTube service.")
+		return
+	}
+
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	b := bear.New(config).RegisterModules(&music.Music{
+	b.RegisterModules(&music.Music{
 		MusicConnections: map[string]*music.Connection{},
+		Service:          service,
 	}).Start()
 
 	<-c

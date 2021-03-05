@@ -9,6 +9,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/jonas747/dca"
 	"github.com/kkdai/youtube/v2"
+	"github.com/sheerun/queue"
+	yt "google.golang.org/api/youtube/v3"
 )
 
 type QueueItem struct {
@@ -21,9 +23,9 @@ type Connection struct {
 	ChannelID         string
 	EncodeOpts        *dca.EncodeOptions
 	VoiceConnection   *discordgo.VoiceConnection
-	Queue             []*QueueItem
+	Queue             *queue.Queue
 	CurrentEncSession *dca.EncodeSession
-	*sync.RWMutex
+	*sync.Mutex
 }
 
 func NewConnection(voice *discordgo.VoiceConnection, opts *dca.EncodeOptions) *Connection {
@@ -32,25 +34,25 @@ func NewConnection(voice *discordgo.VoiceConnection, opts *dca.EncodeOptions) *C
 		ChannelID:       voice.ChannelID,
 		EncodeOpts:      opts,
 		VoiceConnection: voice,
-		RWMutex:         &sync.RWMutex{},
+		Queue:           queue.New(),
+		Mutex:           &sync.Mutex{},
 	}
 }
 
 func (c *Connection) StreamMusic() error {
-	c.RLock()
-	length := len(c.Queue)
-	c.RUnlock()
+	for {
+		item, ok := c.Queue.Pop().(*QueueItem)
+		if !ok {
+			return fmt.Errorf("error casting into queue item")
+		}
 
-	for i := 0; i < length; i++ {
-		c.Lock()
-
-		encodeSession, err := dca.EncodeFile(c.Queue[i].StreamURL, c.EncodeOpts)
+		encodeSession, err := dca.EncodeFile(item.StreamURL, c.EncodeOpts)
 		if err != nil {
 			return err
 		}
 
+		c.Lock()
 		c.CurrentEncSession = encodeSession
-
 		c.Unlock()
 
 		done := make(chan error)
@@ -67,28 +69,37 @@ func (c *Connection) StreamMusic() error {
 		c.CurrentEncSession = nil
 		c.Unlock()
 
-		if len(c.Queue)-1 == i {
-			for j := 0; j < 300; j++ {
-				length = len(c.Queue)
-				if length-1 == i {
-					time.Sleep(1 * time.Second)
-					continue
-				}
+		if c.Queue.Length() == 0 {
+			for i := 0; i < 150; i++ {
+				time.Sleep(2 * time.Second)
 
-				break
+				if c.Queue.Length() > 0 {
+					break
+				}
 			}
+		}
+
+		if c.Queue.Length() == 0 {
+			break
 		}
 	}
 
 	return nil
 }
 
-func (c *Connection) AddYouTubeVideo(url string) (*youtube.Video, error) {
+func (c *Connection) AddYouTubeVideo(search string, service *yt.Service) (*youtube.Video, error) {
+	slcall := service.Search.List([]string{"snippet"})
+
+	res, err := slcall.Q(search).Do()
+	if err != nil {
+		return nil, err
+	}
+
 	cl := youtube.Client{
 		Debug: true,
 	}
 
-	video, err := cl.GetVideo(url)
+	video, err := cl.GetVideo(res.Items[0].Id.VideoId)
 	if err != nil {
 		return nil, err
 	}
@@ -107,19 +118,17 @@ func (c *Connection) AddYouTubeVideo(url string) (*youtube.Video, error) {
 		return nil, err
 	}
 
-	c.Lock()
-	c.Queue = append(c.Queue, &QueueItem{
+	c.Queue.Append(&QueueItem{
 		Info:      video,
 		StreamURL: streamUrl,
 	})
-	c.Unlock()
 
 	return video, nil
 }
 
 func (c *Connection) Skip() error {
-	c.RLock()
-	defer c.RUnlock()
+	c.Lock()
+	defer c.Unlock()
 
 	if c.CurrentEncSession == nil {
 		return nil
@@ -148,6 +157,8 @@ func (c *Connection) Close(m *Music) error {
 	}
 
 	delete(m.MusicConnections, c.GuildID)
+
+	c.Queue.Clean()
 
 	return nil
 }
